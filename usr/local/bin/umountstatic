@@ -1,0 +1,19 @@
+#!/bin/bash
+LaunchPath="$(losetup -nO BACK-FILE /dev/loop0)"
+LaunchPath="${LaunchPath%%/slax/*}/slax"
+
+for Each in $(grep -h "$LaunchPath/static/[0-9][0-9]\-.*=ro$" $(ls -1 /sys/fs/aufs/si_*/br[0-9]*)); do
+   echo "Detected $Each is mounted."
+   if [ -d "${Each%%=*}" ]; then
+      if grep -q "^$Each" /sys/fs/aufs/si_*/br[0-9]*; then
+         mount -v -o remount,del:${Each%%=*} /
+      else
+         echo "$Each already umounted."
+      fi
+   else
+      echo "$Each is not a directory.  This is unexpected."
+   fi
+done
+
+echo
+cat $(ls -1 /sys/fs/aufs/si_*/br[0-9]*|sort -t/ -nk6.3)

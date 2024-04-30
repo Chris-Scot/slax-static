@@ -1,0 +1,2 @@
+#!/bin/bash
+cat $(ls -1 /sys/fs/aufs/si_*/br[0-9]*|sort -t/ -nk6.3)

@@ -1,0 +1,29 @@
+#!/bin/bash
+set -e
+Result=0
+StaticDir="$1"
+LaunchPath="$(losetup -nO BACK-FILE /dev/loop0)"
+LaunchPath="${LaunchPath%%/slax/*}/slax"
+SourceDir="$LaunchPath/static/$StaticDir"
+
+if [ "${StaticDir##*/}" != "$StaticDir" ]; then
+   echo "'$StaticDir' should not contain a path.  It should be in '$LaunchPath/static'."
+   Result=1
+fi
+
+if [ ! -d "$SourceDir" ]; then
+   echo "'$SourceDir' does not exist.  This is a fundamental requirement."
+   Result=1
+fi
+
+if [ -f "${LaunchPath}/modules${StaticDir}.sb" ]; then
+   echo "'${LaunchPath}/modules${StaticDir}.sb' exists.  Remove this, it can't be updated."
+   Result=1
+fi
+
+if [ $Result -ne 0 ]; then
+   exit $Result
+fi
+
+mksquashfs "$SourceDir" "${LaunchPath}/modules/${StaticDir}.sb" -comp xz -b 1024K -Xbcj x86 -always-use-fragments -noappend
+mv "$SourceDir" "$LaunchPath/static/.$StaticDir"

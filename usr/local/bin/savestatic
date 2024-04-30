@@ -1,0 +1,74 @@
+#!/bin/bash
+
+EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]pwd[.]lock|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^boot/|^dev/|^etc/[.]pwd[.]lock|^etc/console-setup/cached|^etc/fstab|^etc/mtab|^etc/resolv[.]conf|^etc/X11/xorg[.]conf[.]d|^mnt/|^proc/|^root/[.]cache/|^root/[.]bash_history|^root/[.]fehbg|^root/[.]fluxbox|^root/[.]gtk-bookmarks|^root/[.]Xauthority|^root/[.]xsession-errors|^run/|^sbin/fsck[.]aufs|^sys/|^tmp/|^var/backups/|^var/cache/|^var/lib/apt/|^var/lib/connman/|^var/lib/dhcp/|^var/lib/smartmontools/|^var/lib/systemd/|^var/log/|^var/tmp/"
+CHANGES=/run/initramfs/memory/changes
+
+if [ "$1" = "" ]; then
+   echo ""
+   echo "savestatic  - save all changed files in a static filesystem directory"
+   echo "            - excluding some predefined files such as /etc/mtab,"
+   echo "              temp & log files, empty directories, apt cache, and such"
+   echo ""
+   echo "Usage:"
+   echo "        $0 target_directory [ changes_directory ]"
+   echo "Eg:"
+   echo "        $0 10-test"
+   echo ""
+   echo "If changes_directory is not specified, $CHANGES is used."
+   echo ""
+   exit 1
+fi
+
+Result=0
+StaticDir="$1"
+LaunchPath="$(losetup -nO BACK-FILE /dev/loop0)"
+LaunchPath="${LaunchPath%%/slax/*}/slax"
+Dest="$LaunchPath/static/$StaticDir"
+
+if [ "${StaticDir##*/}" != "$StaticDir" ]; then
+   echo "'$StaticDir' should not contain a path.  It will be placed in '$LaunchPath/static'."
+   Result=1
+fi
+
+if [ -d "$Dest" ]; then
+   echo "'$Dest' exists.  Remove this if it is not required."
+   Result=1
+fi
+
+if [ $Result -ne 0 ]; then
+   exit $Result
+fi
+
+if [ ! "$2" = "" ]; then
+   CHANGES="$2"
+fi
+
+# Overlayfs requires one more subdir. Detect it this way
+if [ -d "$CHANGES/changes" -a -d "$CHANGES/workdir" -a "$(ls -1 "$CHANGES" | egrep -v '^changes$' | egrep -v '^workdir')" = "" ]; then
+   CHANGES="$CHANGES/changes"
+fi
+
+# exclude control files for automounted disk drives
+EXCLUDEDISKS=$(grep "Slax skip savechanges" /etc/systemd/system/{*,*/*} 2>/dev/null | cut -d : -f 1 | cut -b 2- | tr '\n' '|')
+if [ "$EXCLUDEDISKS" != "" ]; then
+   EXCLUDE="$EXCLUDE|^($EXCLUDEDISKS)\$"
+fi
+
+# exclude the save_file itself of course
+EXCLUDE="$EXCLUDE|^""$(readlink -f "$1" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
+
+CWD=$(pwd)
+
+cd $CHANGES || exit
+
+mkdir -p $Dest
+
+find \( -type d -printf "%p/\n" , -not -type d -print \) \
+  | sed -r "s/^[.]\\///" | egrep -v "$EXCLUDE" \
+  | while read FILE; do
+    cp --parents -afr "$FILE" "$Dest"
+done
+
+find "$Dest" -type d -empty -delete
+
+cd $CWD
